@@ -358,56 +358,115 @@
         </div>
     </div>
 
-    <script>
-        const classConfig = {
-            0: { name: 'Asian Openbill', color: '#FF6B6B', rgba: 'rgba(255, 107, 107, 0.4)' },
-            1: { name: 'Black-headed Ibis', color: '#4ECDC4', rgba: 'rgba(78, 205, 196, 0.4)' },
-            2: { name: 'White Birds', color: '#FFD93D', rgba: 'rgba(255, 217, 61, 0.4)' },
-            3: { name: 'Black Birds', color: '#6C5CE7', rgba: 'rgba(108, 92, 231, 0.4)' },
-            4: { name: 'Brown Birds', color: '#A29BFE', rgba: 'rgba(162, 155, 254, 0.4)' }
-        };
+<script>
+    const classConfig = {
+        0: { name: 'Asian Openbill', color: '#FF6B6B', rgba: 'rgba(255, 107, 107, 0.4)' },
+        1: { name: 'Black-headed Ibis', color: '#4ECDC4', rgba: 'rgba(78, 205, 196, 0.4)' },
+        2: { name: 'White Birds', color: '#FFD93D', rgba: 'rgba(255, 217, 61, 0.4)' },
+        3: { name: 'Black Birds', color: '#6C5CE7', rgba: 'rgba(108, 92, 231, 0.4)' },
+        4: { name: 'Brown Birds', color: '#8D6E63', rgba: 'rgba(141, 110, 99, 0.4)' }
+    };
 
-        let images = [];
-        let labels = {};
-        let currentImageIndex = 0;
-        let showLabels = true;
-        let showDetections = true;
-        let imageMap = {};
+    let images = [];
+    let labels = {};
+    let currentImageIndex = 0;
+    let showLabels = true;
+    let showDetections = true;
+    let imageMap = {};
 
-        const folderInput = document.getElementById('folderInput');
-        const canvasContainer = document.getElementById('canvasContainer');
+    const folderInput = document.getElementById('folderInput');
+    const canvasContainer = document.getElementById('canvasContainer');
 
-        folderInput.addEventListener('change', handleFolderLoad);
+    // Keep manual upload capability just in case
+    folderInput.addEventListener('change', handleFolderLoad);
 
-        // Auto-load images and labels on page load
-        window.addEventListener('load', autoLoadFiles);
+    // Auto-load images from repo on page load
+    window.addEventListener('load', autoLoadFiles);
 
-        function handleFolderLoad(e) {
-            const files = Array.from(e.target.files);
-            images = [];
-            labels = {};
-            imageMap = {};
+    function handleFolderLoad(e) {
+        const files = Array.from(e.target.files);
+        images = [];
+        labels = {};
+        imageMap = {};
 
-            // Separate images and labels
-            files.forEach(file => {
-                const fileName = file.name;
-                
+        files.forEach(file => {
+            const fileName = file.name;
+            if (/\.(jpg|jpeg|png|gif|webp)$/i.test(fileName)) {
+                images.push({ name: fileName, file: file, url: URL.createObjectURL(file) });
+                imageMap[fileName.replace(/\.[^/.]+$/, '')] = true;
+            }
+            if (fileName.endsWith('.txt')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    labels[fileName.replace('.txt', '')] = event.target.result;
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        images.sort((a, b) => a.name.localeCompare(b.name));
+        currentImageIndex = 0;
+        updateStats();
+        renderLegend();
+
+        if (images.length > 0) {
+            displayImage(0);
+        }
+    }
+
+    async function autoLoadFiles() {
+        images = [];
+        labels = {};
+        imageMap = {};
+
+        try {
+            console.log('Attempting to load file_list.json...');
+            
+            // 1. Fetch the manifest file (file_list.json)
+            // This is the CRITICAL fix: We stop guessing and read the list directly
+            const response = await fetch('file_list.json');
+            
+            if (!response.ok) {
+                throw new Error('file_list.json not found. Please run the python script to generate it.');
+            }
+
+            const fileNames = await response.json();
+            console.log('Found files:', fileNames);
+
+            // Get current directory path for building image URLs
+            const currentDir = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+
+            // 2. Load label files
+            for (const fileName of fileNames) {
+                if (fileName.endsWith('.txt') && !fileName.includes('file_list')) {
+                    try {
+                        const response = await fetch(fileName);
+                        if (response.ok) {
+                            const content = await response.text();
+                            labels[fileName.replace('.txt', '')] = content;
+                        }
+                    } catch (e) {
+                        console.warn('Could not load label:', fileName);
+                    }
+                }
+            }
+
+            // 3. Load images
+            for (const fileName of fileNames) {
                 if (/\.(jpg|jpeg|png|gif|webp)$/i.test(fileName)) {
-                    images.push({ name: fileName, file: file });
+                    images.push({ 
+                        name: fileName, 
+                        url: fileName // Since files are in root, URL is just filename
+                    });
                     imageMap[fileName.replace(/\.[^/.]+$/, '')] = true;
                 }
-                
-                if (fileName.endsWith('.txt')) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        labels[fileName.replace('.txt', '')] = event.target.result;
-                    };
-                    reader.readAsText(file);
-                }
-            });
+            }
 
             // Sort images
             images.sort((a, b) => a.name.localeCompare(b.name));
+
+            console.log('Total images found:', images.length);
+            console.log('Total labels found:', Object.keys(labels).length);
 
             currentImageIndex = 0;
             updateStats();
@@ -415,275 +474,190 @@
 
             if (images.length > 0) {
                 displayImage(0);
-            }
-        }
-
-        async function autoLoadFiles() {
-            images = [];
-            labels = {};
-            imageMap = {};
-
-            try {
-                // Get current page directory
-                const currentDir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-                
-                // Fetch list of files from current directory
-                const response = await fetch(currentDir);
-                const html = await response.text();
-                
-                console.log('Fetching from:', currentDir);
-                
-                // Parse HTML to get file list - handle different server formats
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                
-                let fileNames = [];
-                
-                // Try different selectors for different server types
-                // GitHub Pages / Apache
-                const links = Array.from(doc.querySelectorAll('a'));
-                fileNames = links
-                    .map(a => {
-                        const href = a.getAttribute('href');
-                        const text = a.textContent.trim();
-                        return href || text;
-                    })
-                    .filter(name => name && !name.startsWith('?') && name !== '../' && !name.includes('/'))
-                    .map(name => name.split('/').pop()); // Get just filename
-                
-                console.log('Found files:', fileNames);
-
-                // Load label files
-                for (const fileName of fileNames) {
-                    if (fileName.endsWith('.txt') && !fileName.includes('detection_viewer')) {
-                        try {
-                            const labelUrl = currentDir + fileName;
-                            const response = await fetch(labelUrl);
-                            if (response.ok) {
-                                const content = await response.text();
-                                labels[fileName.replace('.txt', '')] = content;
-                                console.log('Loaded label:', fileName);
-                            }
-                        } catch (e) {
-                            console.log('Could not load label:', fileName, e);
-                        }
-                    }
-                }
-
-                // Load images
-                for (const fileName of fileNames) {
-                    if (/\.(jpg|jpeg|png|gif|webp)$/i.test(fileName.toLowerCase())) {
-                        images.push({ name: fileName, url: currentDir + fileName });
-                        imageMap[fileName.replace(/\.[^/.]+$/, '')] = true;
-                        console.log('Found image:', fileName);
-                    }
-                }
-
-                // Sort images
-                images.sort((a, b) => a.name.localeCompare(b.name));
-
-                console.log('Total images found:', images.length);
-                console.log('Total labels found:', Object.keys(labels).length);
-
-                currentImageIndex = 0;
-                updateStats();
-                renderLegend();
-
-                if (images.length > 0) {
-                    displayImage(0);
-                } else {
-                    canvasContainer.innerHTML = `
-                        <div class="no-data">
-                            <div class="no-data-icon">📁</div>
-                            <div>No images found in this directory</div>
-                            <div style="font-size: 12px; color: #aaa; margin-top: 10px;">
-                                <div>Make sure images (.jpg, .png, etc) are in the same folder</div>
-                                <div style="margin-top: 5px;">Check browser console (F12) for debug info</div>
-                            </div>
-                        </div>
-                    `;
-                }
-            } catch (e) {
+            } else {
                 canvasContainer.innerHTML = `
                     <div class="no-data">
                         <div class="no-data-icon">⚠️</div>
-                        <div>Could not auto-load files</div>
-                        <div style="font-size: 12px; color: #aaa; margin-top: 10px;">
-                            <div>Error: ${e.message}</div>
-                            <div style="margin-top: 5px;">Check browser console (F12) for more details</div>
-                        </div>
+                        <div>No images found in file_list.json</div>
                     </div>
                 `;
-                console.error('Auto-load error:', e);
-            }
-        }
-
-        function displayImage(index) {
-            if (images.length === 0) return;
-
-            currentImageIndex = index;
-            const imageObj = images[index];
-
-            const img = new Image();
-            img.onload = () => {
-                drawImageWithDetections(img, imageObj.name);
-            };
-            img.onerror = () => {
-                canvasContainer.innerHTML = `<div class="no-data"><div>Error loading image: ${imageObj.name}</div></div>`;
-            };
-            img.src = imageObj.url;
-
-            updateImageInfo();
-            updateStats();
-            updateDetectionsList();
-            updateButtonStates();
-        }
-
-        function drawImageWithDetections(img, imageName) {
-            canvasContainer.innerHTML = '';
-            const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
-
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-
-            // Get label file name without extension
-            const labelKey = imageName.replace(/\.[^/.]+$/, '');
-            const labelContent = labels[labelKey];
-
-            if (labelContent && showLabels && showDetections) {
-                const detections = labelContent.trim().split('\n').filter(line => line.trim());
-                detections.forEach(line => {
-                    const parts = line.trim().split(/\s+/);
-                    const classId = parseInt(parts[0]);
-                    const x = parseFloat(parts[1]);
-                    const y = parseFloat(parts[2]);
-                    const w = parseFloat(parts[3]);
-                    const h = parseFloat(parts[4]);
-
-                    // Convert normalized coordinates to pixel coordinates
-                    const pixelX = x * img.width;
-                    const pixelY = y * img.height;
-                    const pixelW = w * img.width;
-                    const pixelH = h * img.height;
-
-                    const left = pixelX - pixelW / 2;
-                    const top = pixelY - pixelH / 2;
-
-                    // Draw filled rectangle with transparency (CVAT style)
-                    if (classConfig[classId]) {
-                        ctx.fillStyle = classConfig[classId].rgba;
-                        ctx.fillRect(left, top, pixelW, pixelH);
-
-                        // Draw border
-                        ctx.strokeStyle = classConfig[classId].color;
-                        ctx.lineWidth = 3;
-                        ctx.strokeRect(left, top, pixelW, pixelH);
-
-                        // Draw label
-                        const label = classConfig[classId].name;
-                        ctx.fillStyle = classConfig[classId].color;
-                        ctx.font = 'bold 14px Arial';
-                        ctx.fillText(label, left + 5, top - 5);
-                    }
-                });
             }
 
-            canvasContainer.appendChild(canvas);
-        }
-
-        function updateImageInfo() {
-            const imageObj = images[currentImageIndex];
-            const labelKey = imageObj.name.replace(/\.[^/.]+$/, '');
-            const labelContent = labels[labelKey];
-            const detectionCount = labelContent ? labelContent.trim().split('\n').filter(l => l.trim()).length : 0;
-
-            document.getElementById('imageInfo').innerHTML = `
-                <div class="image-name">${imageObj.name}</div>
-                <div class="image-meta">${detectionCount} detections</div>
+        } catch (e) {
+            canvasContainer.innerHTML = `
+                <div class="no-data">
+                    <div class="no-data-icon">❌</div>
+                    <div>Could not load repository files</div>
+                    <div style="font-size: 12px; color: #aaa; margin-top: 10px;">
+                        <div>${e.message}</div>
+                        <div style="margin-top:5px">Make sure <b>file_list.json</b> is in your GitHub repo.</div>
+                    </div>
+                </div>
             `;
+            console.error('Auto-load error:', e);
         }
+    }
 
-        function updateStats() {
-            document.getElementById('totalImages').textContent = images.length;
-            document.getElementById('currentImage').textContent = `${currentImageIndex + 1}/${images.length}`;
-        }
+    function displayImage(index) {
+        if (images.length === 0) return;
 
-        function updateDetectionsList() {
-            const imageObj = images[currentImageIndex];
-            const labelKey = imageObj.name.replace(/\.[^/.]+$/, '');
-            const labelContent = labels[labelKey];
-            const detectionsList = document.getElementById('detectionsList');
+        currentImageIndex = index;
+        const imageObj = images[index];
 
-            if (!labelContent) {
-                document.getElementById('detectionCount').textContent = '0';
-                detectionsList.innerHTML = '<div style="text-align: center; color: #999; padding: 10px;">No detections</div>';
-                return;
-            }
+        const img = new Image();
+        img.crossOrigin = "Anonymous"; // Helpful for some browser security policies
+        img.onload = () => {
+            drawImageWithDetections(img, imageObj.name);
+        };
+        img.onerror = () => {
+            canvasContainer.innerHTML = `<div class="no-data"><div>Error loading image: ${imageObj.name}</div></div>`;
+        };
+        img.src = imageObj.url;
 
+        updateImageInfo();
+        updateStats();
+        updateDetectionsList();
+        updateButtonStates();
+    }
+
+    function drawImageWithDetections(img, imageName) {
+        canvasContainer.innerHTML = '';
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        const labelKey = imageName.replace(/\.[^/.]+$/, '');
+        const labelContent = labels[labelKey];
+
+        if (labelContent && showLabels && showDetections) {
             const detections = labelContent.trim().split('\n').filter(line => line.trim());
-            document.getElementById('detectionCount').textContent = detections.length;
-
-            detectionsList.innerHTML = detections.map((line, idx) => {
+            detections.forEach(line => {
                 const parts = line.trim().split(/\s+/);
                 const classId = parseInt(parts[0]);
-                const confidence = ((1 - Math.abs(parseFloat(parts[1]) - 0.5) * 2) * 100).toFixed(0);
-                const className = classConfig[classId]?.name || 'Unknown';
+                const x = parseFloat(parts[1]);
+                const y = parseFloat(parts[2]);
+                const w = parseFloat(parts[3]);
+                const h = parseFloat(parts[4]);
 
-                return `
-                    <div class="detection-item">
-                        <div class="detection-class-dot" style="background: ${classConfig[classId]?.color || '#ccc'};"></div>
-                        <div class="detection-text">${className}</div>
-                    </div>
-                `;
-            }).join('');
+                const pixelX = x * img.width;
+                const pixelY = y * img.height;
+                const pixelW = w * img.width;
+                const pixelH = h * img.height;
+
+                const left = pixelX - pixelW / 2;
+                const top = pixelY - pixelH / 2;
+
+                if (classConfig[classId]) {
+                    ctx.fillStyle = classConfig[classId].rgba;
+                    ctx.fillRect(left, top, pixelW, pixelH);
+
+                    ctx.strokeStyle = classConfig[classId].color;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(left, top, pixelW, pixelH);
+
+                    const label = classConfig[classId].name;
+                    ctx.fillStyle = classConfig[classId].color;
+                    ctx.font = 'bold 14px Arial';
+                    ctx.fillText(label, left + 5, top - 5);
+                }
+            });
+        }
+        canvasContainer.appendChild(canvas);
+    }
+
+    function updateImageInfo() {
+        const imageObj = images[currentImageIndex];
+        const labelKey = imageObj.name.replace(/\.[^/.]+$/, '');
+        const labelContent = labels[labelKey];
+        const detectionCount = labelContent ? labelContent.trim().split('\n').filter(l => l.trim()).length : 0;
+
+        document.getElementById('imageInfo').innerHTML = `
+            <div class="image-name">${imageObj.name}</div>
+            <div class="image-meta">${detectionCount} detections</div>
+        `;
+    }
+
+    function updateStats() {
+        document.getElementById('totalImages').textContent = images.length;
+        document.getElementById('currentImage').textContent = `${currentImageIndex + 1}/${images.length}`;
+    }
+
+    function updateDetectionsList() {
+        const imageObj = images[currentImageIndex];
+        const labelKey = imageObj.name.replace(/\.[^/.]+$/, '');
+        const labelContent = labels[labelKey];
+        const detectionsList = document.getElementById('detectionsList');
+
+        if (!labelContent) {
+            document.getElementById('detectionCount').textContent = '0';
+            detectionsList.innerHTML = '<div style="text-align: center; color: #999; padding: 10px;">No detections</div>';
+            return;
         }
 
-        function renderLegend() {
-            const legend = document.getElementById('classLegend');
-            legend.innerHTML = Object.entries(classConfig).map(([id, config]) => `
-                <div class="legend-item" title="${config.name}">
-                    <div class="legend-color" style="background: ${config.color};"></div>
-                    <div>${config.name}</div>
+        const detections = labelContent.trim().split('\n').filter(line => line.trim());
+        document.getElementById('detectionCount').textContent = detections.length;
+
+        detectionsList.innerHTML = detections.map((line, idx) => {
+            const parts = line.trim().split(/\s+/);
+            const classId = parseInt(parts[0]);
+            const className = classConfig[classId]?.name || 'Unknown';
+
+            return `
+                <div class="detection-item">
+                    <div class="detection-class-dot" style="background: ${classConfig[classId]?.color || '#ccc'};"></div>
+                    <div class="detection-text">${className}</div>
                 </div>
-            `).join('');
-        }
+            `;
+        }).join('');
+    }
 
-        function previousImage() {
-            if (currentImageIndex > 0) {
-                displayImage(currentImageIndex - 1);
-            }
-        }
+    function renderLegend() {
+        const legend = document.getElementById('classLegend');
+        legend.innerHTML = Object.entries(classConfig).map(([id, config]) => `
+            <div class="legend-item" title="${config.name}">
+                <div class="legend-color" style="background: ${config.color};"></div>
+                <div>${config.name}</div>
+            </div>
+        `).join('');
+    }
 
-        function nextImage() {
-            if (currentImageIndex < images.length - 1) {
-                displayImage(currentImageIndex + 1);
-            }
+    function previousImage() {
+        if (currentImageIndex > 0) {
+            displayImage(currentImageIndex - 1);
         }
+    }
 
-        function toggleShowLabels() {
-            showLabels = !showLabels;
-            document.getElementById('toggleBtn').textContent = showLabels ? '✓ Hide Labels' : 'Show Labels';
-            if (images.length > 0) {
-                displayImage(currentImageIndex);
-            }
+    function nextImage() {
+        if (currentImageIndex < images.length - 1) {
+            displayImage(currentImageIndex + 1);
         }
+    }
 
-        function toggleShowDetections() {
-            showDetections = !showDetections;
-            document.getElementById('toggleDetectBtn').textContent = showDetections ? '✓ Hide Detections' : 'Show Detections';
-            if (images.length > 0) {
-                displayImage(currentImageIndex);
-            }
+    function toggleShowLabels() {
+        showLabels = !showLabels;
+        document.getElementById('toggleBtn').textContent = showLabels ? '✓ Hide Labels' : 'Show Labels';
+        if (images.length > 0) {
+            displayImage(currentImageIndex);
         }
+    }
 
-        function updateButtonStates() {
-            document.getElementById('prevBtn').disabled = currentImageIndex === 0;
-            document.getElementById('nextBtn').disabled = currentImageIndex === images.length - 1;
+    function toggleShowDetections() {
+        showDetections = !showDetections;
+        document.getElementById('toggleDetectBtn').textContent = showDetections ? '✓ Hide Detections' : 'Show Detections';
+        if (images.length > 0) {
+            displayImage(currentImageIndex);
         }
+    }
 
-        renderLegend();
-    </script>
+    function updateButtonStates() {
+        document.getElementById('prevBtn').disabled = currentImageIndex === 0;
+        document.getElementById('nextBtn').disabled = currentImageIndex === images.length - 1;
+    }
+
+    renderLegend();
+</script>
 </body>
 </html>
