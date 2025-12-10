@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO Detection Viewer - Boeung Sne</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.95;
+            font-size: 14px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 250px;
+            gap: 20px;
+            padding: 30px;
+            min-height: 600px;
+        }
+
+        .viewer {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .canvas-container {
+            position: relative;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: auto;
+            flex: 1;
+            min-height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            cursor: crosshair;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .class-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .legend-item:hover {
+            background: white;
+        }
+
+        .legend-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 3px;
+            border: 2px solid rgba(0, 0, 0, 0.2);
+            flex-shrink: 0;
+        }
+
+        .stats {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            color: #666;
+        }
+
+        .stat-label {
+            font-weight: 600;
+        }
+
+        .stat-value {
+            color: #667eea;
+            font-weight: 700;
+        }
+
+        .image-info {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+
+        .image-name {
+            font-weight: 600;
+            color: #333;
+            word-break: break-word;
+            margin-bottom: 5px;
+        }
+
+        .image-meta {
+            color: #666;
+            font-size: 11px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-input-label {
+            display: inline-block;
+            padding: 10px 16px;
+            background: #667eea;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-label:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .detections-list {
+            background: white;
+            border-radius: 6px;
+            overflow: hidden;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 11px;
+        }
+
+        .detection-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .detection-item:last-child {
+            border-bottom: none;
+        }
+
+        .detection-class-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        .detection-text {
+            color: #666;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .sidebar {
+                max-height: none;
+            }
+        }
+
+        .no-data {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            text-align: center;
+            gap: 15px;
+        }
+
+        .no-data-icon {
+            font-size: 48px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🐦 YOLO Detection Viewer</h1>
+            <p>Boeung Sne Bird Detection Analysis</p>
+        </div>
+
+        <div class="main-content">
+            <div class="viewer">
+                <div class="controls">
+                    <button class="btn-primary" onclick="previousImage()" id="prevBtn">← Previous</button>
+                    <button class="btn-secondary" onclick="autoLoadFiles()">🔄 Refresh</button>
+                    <button class="btn-secondary" onclick="toggleShowLabels()" id="toggleBtn">Hide Labels</button>
+                    <button class="btn-secondary" onclick="toggleShowDetections()" id="toggleDetectBtn">Show Detections</button>
+                    <button class="btn-primary" onclick="nextImage()" id="nextBtn">Next →</button>
+                </div>
+                <input type="file" id="folderInput" webkitdirectory mozdirectory msdirectory odirectory directory multiple />
+                
+                <div class="canvas-container" id="canvasContainer">
+                    <div class="no-data">
+                        <div class="no-data-icon">📂</div>
+                        <div>Load a folder with images and labels to get started</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="image-info" id="imageInfo">
+                    <div class="image-name">No image loaded</div>
+                    <div class="image-meta">Load images using the folder button</div>
+                </div>
+
+                <h3>Class Legend</h3>
+                <div class="class-legend" id="classLegend"></div>
+
+                <h3>Statistics</h3>
+                <div class="stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Total Images:</span>
+                        <span class="stat-value" id="totalImages">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Current:</span>
+                        <span class="stat-value" id="currentImage">0/0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Detections:</span>
+                        <span class="stat-value" id="detectionCount">0</span>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 20px;">Detections</h3>
+                <div class="detections-list" id="detectionsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const classConfig = {
+            0: { name: 'Asian Openbill', color: '#FF6B6B', rgba: 'rgba(255, 107, 107, 0.4)' },
+            1: { name: 'Black-headed Ibis', color: '#4ECDC4', rgba: 'rgba(78, 205, 196, 0.4)' },
+            2: { name: 'White Birds', color: '#FFD93D', rgba: 'rgba(255, 217, 61, 0.4)' },
+            3: { name: 'Black Birds', color: '#6C5CE7', rgba: 'rgba(108, 92, 231, 0.4)' },
+            4: { name: 'Brown Birds', color: '#A29BFE', rgba: 'rgba(162, 155, 254, 0.4)' }
+        };
+
+        let images = [];
+        let labels = {};
+        let currentImageIndex = 0;
+        let showLabels = true;
+        let showDetections = true;
+        let imageMap = {};
+
+        const folderInput = document.getElementById('folderInput');
+        const canvasContainer = document.getElementById('canvasContainer');
+
+        folderInput.addEventListener('change', handleFolderLoad);
+
+        // Auto-load images and labels on page load
+        window.addEventListener('load', autoLoadFiles);
+
+        function handleFolderLoad(e) {
+            const files = Array.from(e.target.files);
+            images = [];
+            labels = {};
+            imageMap = {};
+
+            // Separate images and labels
+            files.forEach(file => {
+                const fileName = file.name;
+                
+                if (/\.(jpg|jpeg|png|gif|webp)$/i.test(fileName)) {
+                    images.push({ name: fileName, file: file });
+                    imageMap[fileName.replace(/\.[^/.]+$/, '')] = true;
+                }
+                
+                if (fileName.endsWith('.txt')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        labels[fileName.replace('.txt', '')] = event.target.result;
+                    };
+                    reader.readAsText(file);
+                }
+            });
+
+            // Sort images
+            images.sort((a, b) => a.name.localeCompare(b.name));
+
+            currentImageIndex = 0;
+            updateStats();
+            renderLegend();
+
+            if (images.length > 0) {
+                displayImage(0);
+            }
+        }
+
+        async function autoLoadFiles() {
+            images = [];
+            labels = {};
+            imageMap = {};
+
+            try {
+                // Get current page directory
+                const currentDir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+                
+                // Fetch list of files from current directory
+                const response = await fetch(currentDir);
+                const html = await response.text();
+                
+                console.log('Fetching from:', currentDir);
+                
+                // Parse HTML to get file list - handle different server formats
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                let fileNames = [];
+                
+                // Try different selectors for different server types
+                // GitHub Pages / Apache
+                const links = Array.from(doc.querySelectorAll('a'));
+                fileNames = links
+                    .map(a => {
+                        const href = a.getAttribute('href');
+                        const text = a.textContent.trim();
+                        return href || text;
+                    })
+                    .filter(name => name && !name.startsWith('?') && name !== '../' && !name.includes('/'))
+                    .map(name => name.split('/').pop()); // Get just filename
+                
+                console.log('Found files:', fileNames);
+
+                // Load label files
+                for (const fileName of fileNames) {
+                    if (fileName.endsWith('.txt') && !fileName.includes('detection_viewer')) {
+                        try {
+                            const labelUrl = currentDir + fileName;
+                            const response = await fetch(labelUrl);
+                            if (response.ok) {
+                                const content = await response.text();
+                                labels[fileName.replace('.txt', '')] = content;
+                                console.log('Loaded label:', fileName);
+                            }
+                        } catch (e) {
+                            console.log('Could not load label:', fileName, e);
+                        }
+                    }
+                }
+
+                // Load images
+                for (const fileName of fileNames) {
+                    if (/\.(jpg|jpeg|png|gif|webp)$/i.test(fileName.toLowerCase())) {
+                        images.push({ name: fileName, url: currentDir + fileName });
+                        imageMap[fileName.replace(/\.[^/.]+$/, '')] = true;
+                        console.log('Found image:', fileName);
+                    }
+                }
+
+                // Sort images
+                images.sort((a, b) => a.name.localeCompare(b.name));
+
+                console.log('Total images found:', images.length);
+                console.log('Total labels found:', Object.keys(labels).length);
+
+                currentImageIndex = 0;
+                updateStats();
+                renderLegend();
+
+                if (images.length > 0) {
+                    displayImage(0);
+                } else {
+                    canvasContainer.innerHTML = `
+                        <div class="no-data">
+                            <div class="no-data-icon">📁</div>
+                            <div>No images found in this directory</div>
+                            <div style="font-size: 12px; color: #aaa; margin-top: 10px;">
+                                <div>Make sure images (.jpg, .png, etc) are in the same folder</div>
+                                <div style="margin-top: 5px;">Check browser console (F12) for debug info</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                canvasContainer.innerHTML = `
+                    <div class="no-data">
+                        <div class="no-data-icon">⚠️</div>
+                        <div>Could not auto-load files</div>
+                        <div style="font-size: 12px; color: #aaa; margin-top: 10px;">
+                            <div>Error: ${e.message}</div>
+                            <div style="margin-top: 5px;">Check browser console (F12) for more details</div>
+                        </div>
+                    </div>
+                `;
+                console.error('Auto-load error:', e);
+            }
+        }
+
+        function displayImage(index) {
+            if (images.length === 0) return;
+
+            currentImageIndex = index;
+            const imageObj = images[index];
+
+            const img = new Image();
+            img.onload = () => {
+                drawImageWithDetections(img, imageObj.name);
+            };
+            img.onerror = () => {
+                canvasContainer.innerHTML = `<div class="no-data"><div>Error loading image: ${imageObj.name}</div></div>`;
+            };
+            img.src = imageObj.url;
+
+            updateImageInfo();
+            updateStats();
+            updateDetectionsList();
+            updateButtonStates();
+        }
+
+        function drawImageWithDetections(img, imageName) {
+            canvasContainer.innerHTML = '';
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            // Get label file name without extension
+            const labelKey = imageName.replace(/\.[^/.]+$/, '');
+            const labelContent = labels[labelKey];
+
+            if (labelContent && showLabels && showDetections) {
+                const detections = labelContent.trim().split('\n').filter(line => line.trim());
+                detections.forEach(line => {
+                    const parts = line.trim().split(/\s+/);
+                    const classId = parseInt(parts[0]);
+                    const x = parseFloat(parts[1]);
+                    const y = parseFloat(parts[2]);
+                    const w = parseFloat(parts[3]);
+                    const h = parseFloat(parts[4]);
+
+                    // Convert normalized coordinates to pixel coordinates
+                    const pixelX = x * img.width;
+                    const pixelY = y * img.height;
+                    const pixelW = w * img.width;
+                    const pixelH = h * img.height;
+
+                    const left = pixelX - pixelW / 2;
+                    const top = pixelY - pixelH / 2;
+
+                    // Draw filled rectangle with transparency (CVAT style)
+                    if (classConfig[classId]) {
+                        ctx.fillStyle = classConfig[classId].rgba;
+                        ctx.fillRect(left, top, pixelW, pixelH);
+
+                        // Draw border
+                        ctx.strokeStyle = classConfig[classId].color;
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(left, top, pixelW, pixelH);
+
+                        // Draw label
+                        const label = classConfig[classId].name;
+                        ctx.fillStyle = classConfig[classId].color;
+                        ctx.font = 'bold 14px Arial';
+                        ctx.fillText(label, left + 5, top - 5);
+                    }
+                });
+            }
+
+            canvasContainer.appendChild(canvas);
+        }
+
+        function updateImageInfo() {
+            const imageObj = images[currentImageIndex];
+            const labelKey = imageObj.name.replace(/\.[^/.]+$/, '');
+            const labelContent = labels[labelKey];
+            const detectionCount = labelContent ? labelContent.trim().split('\n').filter(l => l.trim()).length : 0;
+
+            document.getElementById('imageInfo').innerHTML = `
+                <div class="image-name">${imageObj.name}</div>
+                <div class="image-meta">${detectionCount} detections</div>
+            `;
+        }
+
+        function updateStats() {
+            document.getElementById('totalImages').textContent = images.length;
+            document.getElementById('currentImage').textContent = `${currentImageIndex + 1}/${images.length}`;
+        }
+
+        function updateDetectionsList() {
+            const imageObj = images[currentImageIndex];
+            const labelKey = imageObj.name.replace(/\.[^/.]+$/, '');
+            const labelContent = labels[labelKey];
+            const detectionsList = document.getElementById('detectionsList');
+
+            if (!labelContent) {
+                document.getElementById('detectionCount').textContent = '0';
+                detectionsList.innerHTML = '<div style="text-align: center; color: #999; padding: 10px;">No detections</div>';
+                return;
+            }
+
+            const detections = labelContent.trim().split('\n').filter(line => line.trim());
+            document.getElementById('detectionCount').textContent = detections.length;
+
+            detectionsList.innerHTML = detections.map((line, idx) => {
+                const parts = line.trim().split(/\s+/);
+                const classId = parseInt(parts[0]);
+                const confidence = ((1 - Math.abs(parseFloat(parts[1]) - 0.5) * 2) * 100).toFixed(0);
+                const className = classConfig[classId]?.name || 'Unknown';
+
+                return `
+                    <div class="detection-item">
+                        <div class="detection-class-dot" style="background: ${classConfig[classId]?.color || '#ccc'};"></div>
+                        <div class="detection-text">${className}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderLegend() {
+            const legend = document.getElementById('classLegend');
+            legend.innerHTML = Object.entries(classConfig).map(([id, config]) => `
+                <div class="legend-item" title="${config.name}">
+                    <div class="legend-color" style="background: ${config.color};"></div>
+                    <div>${config.name}</div>
+                </div>
+            `).join('');
+        }
+
+        function previousImage() {
+            if (currentImageIndex > 0) {
+                displayImage(currentImageIndex - 1);
+            }
+        }
+
+        function nextImage() {
+            if (currentImageIndex < images.length - 1) {
+                displayImage(currentImageIndex + 1);
+            }
+        }
+
+        function toggleShowLabels() {
+            showLabels = !showLabels;
+            document.getElementById('toggleBtn').textContent = showLabels ? '✓ Hide Labels' : 'Show Labels';
+            if (images.length > 0) {
+                displayImage(currentImageIndex);
+            }
+        }
+
+        function toggleShowDetections() {
+            showDetections = !showDetections;
+            document.getElementById('toggleDetectBtn').textContent = showDetections ? '✓ Hide Detections' : 'Show Detections';
+            if (images.length > 0) {
+                displayImage(currentImageIndex);
+            }
+        }
+
+        function updateButtonStates() {
+            document.getElementById('prevBtn').disabled = currentImageIndex === 0;
+            document.getElementById('nextBtn').disabled = currentImageIndex === images.length - 1;
+        }
+
+        renderLegend();
+    </script>
+</body>
+</html>
